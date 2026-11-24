@@ -1,0 +1,29 @@
+# java
+target/
+*.class
+*.jar
+*.war
+
+# node
+node_modules/
+dist/
+*.local
+.vite/
+
+# ide
+.idea/
+.vscode/
+*.iml
+.settings/
+.project
+.classpath
+
+# env
+.env
+*.log
+
+# os
+.DS_Store
+Thumbs.db
+
+*.pdf
