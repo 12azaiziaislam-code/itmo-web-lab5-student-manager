@@ -1,181 +1,308 @@
 <template>
-  <div class="container">
-    <div class="app-header">
-      <h1>Student Management (SSR)</h1>
-      <button v-if="isAdmin" class="btn btn-success" @click="openAddModal">
-        + Add Student
+  <div>
+    <div
+      v-if="studentStore.notification"
+      :class="studentStore.notification.type === 'error' ? 'alert-error' : 'alert-success'"
+      @click="studentStore.clearNotification()"
+    >
+      {{ studentStore.notification.message }}
+    </div>
+
+    <div v-if="error" class="alert-error">
+      {{ getErrorMessage(error, 'Failed to load students') }}
+    </div>
+
+    <StudentFilters
+      :initial="studentStore.filters"
+      @search="onSearch"
+      @reset="onReset"
+    />
+
+    <div v-if="isAdmin" style="margin-bottom: 15px;">
+      <button type="button" class="btn btn-success" @click="openAddModal">
+        + Add New Student
       </button>
     </div>
 
-    <StudentFilters :initial="filters" @search="onSearch" @reset="onReset" />
-
-    <div class="card">
-      <div v-if="pending" class="text-center" style="padding: 20px;">
-        Loading data...
-      </div>
-      
-      <div v-else class="table-responsive">
-        <table>
-          <thead>
-            <tr>
-              <th>ISU ID</th>
-              <th>Full Name</th>
-              <th>Group</th>
-              <th>Room</th>
-              <th v-if="isAdmin">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="student in students" :key="student.isuId">
-              <td>{{ student.isuId }}</td>
-              <td>
-                <NuxtLink :to="`/students/${student.isuId}`">{{ student.fullName }}</NuxtLink>
-              </td>
-              <td>{{ student.group }}</td>
-              <td>{{ student.room }}</td>
-              <td v-if="isAdmin" class="actions-cell">
-                <button class="btn btn-sm btn-primary" @click="openEditModal(student)">Edit</button>
-                <button class="btn btn-sm btn-danger" style="margin-left: 5px;" @click="confirmDelete(student)">Delete</button>
-              </td>
-            </tr>
-            <tr v-if="!students || students.length === 0">
-              <td :colspan="isAdmin ? 5 : 4" class="text-center">No students found</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <TablePagination 
-        :page="filters.page" 
-        :totalPages="totalPages" 
-        :total="totalCount" 
-        :limit="filters.limit" 
-        :disabled="pending"
-        @change-page="changePage" 
-        @change-limit="changeLimit" 
-      />
+    <div v-if="pending" class="card text-center" style="padding: 25px;">
+      Loading students...
     </div>
 
-    <StudentModal 
-      :isOpen="isStudentModalOpen" 
+    <div v-else class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" @click="toggleSort('isuId')">
+              ISU ID {{ sortIndicator('isuId') }}
+            </th>
+            <th class="sortable" @click="toggleSort('fullName')">
+              Full Name {{ sortIndicator('fullName') }}
+            </th>
+            <th class="sortable" @click="toggleSort('group')">
+              Group {{ sortIndicator('group') }}
+            </th>
+            <th class="sortable" @click="toggleSort('dormitoryNumber')">
+              Dormitory {{ sortIndicator('dormitoryNumber') }}
+            </th>
+            <th class="sortable" @click="toggleSort('room')">
+              Room {{ sortIndicator('room') }}
+            </th>
+            <th class="sortable" @click="toggleSort('accommodationPeriod')">
+              Accommodation {{ sortIndicator('accommodationPeriod') }}
+            </th>
+            <th>International</th>
+            <th v-if="isAdmin">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="student in students"
+            :key="student.isuId"
+            class="clickable"
+            @click="goToStudent(student.isuId)"
+          >
+            <td>{{ student.isuId }}</td>
+            <td>
+              <NuxtLink :to="`/students/${student.isuId}`" @click.stop>
+                {{ student.fullName }}
+              </NuxtLink>
+            </td>
+            <td>{{ student.group }}</td>
+            <td>{{ student.dormitoryNumber }}</td>
+            <td>{{ student.room }}</td>
+            <td>{{ formatDate(student.accommodationPeriod) }}</td>
+            <td>{{ student.isInternational ? 'Yes' : 'No' }}</td>
+            <td v-if="isAdmin" class="actions-cell" @click.stop>
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                @click="openEditModal(student)"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger btn-sm"
+                @click="openDeleteModal(student)"
+              >
+                Delete
+              </button>
+            </td>
+          </tr>
+          <tr v-if="students.length === 0">
+            <td :colspan="isAdmin ? 8 : 7" class="text-center">
+              No students found.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <TablePagination
+      :page="currentPage"
+      :total-pages="totalPages"
+      :total="totalCount"
+      :limit="studentStore.filters.limit"
+      :disabled="pending"
+      @change-page="onChangePage"
+      @change-limit="onChangeLimit"
+    />
+
+    <StudentModal
+      :is-open="isStudentModalOpen"
       :student="selectedStudent"
-      @close="isStudentModalOpen = false" 
-      @saved="isStudentModalOpen = false"
+      @close="closeStudentModal"
+      @saved="onStudentSaved"
     />
 
     <ConfirmModal
-      :isOpen="isConfirmModalOpen" 
+      :is-open="isConfirmModalOpen"
       title="Delete Student"
-      :message="`Are you sure you want to delete ${studentToDelete?.fullName}?`"
-      confirmText="Delete" 
-      :isDanger="true" 
+      :message="`Are you sure you want to delete ${studentToDelete?.fullName} (${studentToDelete?.isuId})?`"
+      confirm-text="Delete"
+      :is-danger="true"
       :busy="isDeleting"
-      @confirm="executeDelete" 
-      @cancel="isConfirmModalOpen = false"
+      @confirm="confirmDelete"
+      @cancel="closeDeleteModal"
     />
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, computed } from 'vue'
-import { useStudentStore } from '~/stores/students'
+import { ref, computed } from 'vue';
+import { useStudentStore } from '~/stores/students';
+import { getErrorMessage } from '~/utils/errors';
 
-const token = useCookie('accessToken')
-const studentStore = useStudentStore()
+const studentStore = useStudentStore();
+const tokenCookie = useCookie('accessToken');
+const roleCookie = useCookie('role');
+
+function extractRoleFromToken(token) {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload.role || null;
+  } catch {
+    return null;
+  }
+}
 
 const isAdmin = computed(() => {
-  if (token.value) {
-    return true
+  if (roleCookie.value) return roleCookie.value === 'ADMIN';
+  return extractRoleFromToken(tokenCookie.value) === 'ADMIN';
+});
+
+function resolveApiBase() {
+  const config = useRuntimeConfig();
+  if (import.meta.server && config.apiInternalBase) {
+    return config.apiInternalBase;
   }
-  return false
-})
+  if (config.public?.apiBase) {
+    return config.public.apiBase;
+  }
+  return '/api';
+}
 
-const filters = reactive({ 
-  page: 1, 
-  limit: 10, 
-  search: '', 
-  group: '' 
-})
-
-const { data: students, pending } = await useFetch('http://localhost:8080/api/students', {
-  headers: computed(() => {
-    if (token.value) {
-      return { Authorization: `Bearer ${token.value}` }
+const cleanQuery = computed(() => {
+  const q = {};
+  for (const [key, val] of Object.entries(studentStore.filters)) {
+    if (val !== '' && val !== null && val !== undefined) {
+      q[key] = val;
     }
-    return {}
-  }),
-  query: filters,
-  watch: [filters]
-})
-
-const totalCount = computed(() => {
-  if (students.value) {
-    return students.value.length
   }
-  return 0
-})
+  return q;
+});
+
+const { data, pending, error, refresh } = await useAsyncData(
+  'students-list',
+  async () => {
+    const baseUrl = resolveApiBase();
+    const headers = {};
+    if (tokenCookie.value) {
+      headers.Authorization = `Bearer ${tokenCookie.value}`;
+    }
+
+    const response = await $fetch.raw(`${baseUrl}/students`, {
+      headers,
+      query: cleanQuery.value
+    });
+
+    const headerTotal = response.headers.get('x-total-count');
+    const items = Array.isArray(response._data) ? response._data : [];
+    const total = headerTotal !== null ? Number(headerTotal) : items.length;
+
+    return { items, total };
+  },
+  {
+    watch: [cleanQuery]
+  }
+);
+
+const students = computed(() => data.value?.items || []);
+const totalCount = computed(() => data.value?.total || 0);
+
+const currentPage = computed(() => {
+  return Math.floor(studentStore.filters.offset / studentStore.filters.limit) + 1;
+});
 
 const totalPages = computed(() => {
-  let count = totalCount.value
-  let limit = filters.limit
-  if (count === 0) {
-    return 1
+  return Math.max(1, Math.ceil(totalCount.value / studentStore.filters.limit));
+});
+
+function formatDate(dateStr) {
+  if (!dateStr) return 'N/A';
+  return String(dateStr);
+}
+
+function toggleSort(column) {
+  if (studentStore.filters.sortBy === column) {
+    studentStore.filters.order = studentStore.filters.order === 'asc' ? 'desc' : 'asc';
+  } else {
+    studentStore.filters.sortBy = column;
+    studentStore.filters.order = 'asc';
   }
-  return Math.ceil(count / limit)
-})
-
-const onSearch = (newFilters) => {
-  Object.assign(filters, newFilters)
-  filters.page = 1
+  studentStore.filters.offset = 0;
 }
 
-const onReset = (emptyFilters) => {
-  Object.assign(filters, emptyFilters)
-  filters.page = 1
-  filters.limit = 10
+function sortIndicator(column) {
+  if (studentStore.filters.sortBy !== column) return '';
+  return studentStore.filters.order === 'asc' ? '▲' : '▼';
 }
 
-const changePage = (newPage) => {
-  filters.page = newPage
+function onSearch(newValues) {
+  Object.assign(studentStore.filters, newValues);
+  studentStore.filters.offset = 0;
 }
 
-const changeLimit = (newLimit) => {
-  filters.limit = newLimit
-  filters.page = 1
+function onReset() {
+  studentStore.resetFilters();
 }
 
-const isStudentModalOpen = ref(false)
-const selectedStudent = ref(null)
-const isConfirmModalOpen = ref(false)
-const studentToDelete = ref(null)
-const isDeleting = ref(false)
-
-const openAddModal = () => { 
-  selectedStudent.value = null
-  isStudentModalOpen.value = true 
+function onChangePage(newPage) {
+  studentStore.filters.offset = (newPage - 1) * studentStore.filters.limit;
 }
 
-const openEditModal = (student) => { 
-  selectedStudent.value = { ...student }
-  isStudentModalOpen.value = true 
+function onChangeLimit(newLimit) {
+  studentStore.filters.limit = newLimit;
+  studentStore.filters.offset = 0;
 }
 
-const confirmDelete = (student) => { 
-  studentToDelete.value = student
-  isConfirmModalOpen.value = true 
+function goToStudent(isuId) {
+  navigateTo(`/students/${isuId}`);
 }
 
-const executeDelete = async () => {
-  if (!studentToDelete.value) return
-  
-  isDeleting.value = true
+const isStudentModalOpen = ref(false);
+const selectedStudent = ref(null);
+
+function openAddModal() {
+  selectedStudent.value = null;
+  isStudentModalOpen.value = true;
+}
+
+function openEditModal(student) {
+  selectedStudent.value = { ...student };
+  isStudentModalOpen.value = true;
+}
+
+function closeStudentModal() {
+  isStudentModalOpen.value = false;
+  selectedStudent.value = null;
+}
+
+async function onStudentSaved() {
+  closeStudentModal();
+  await refresh();
+}
+
+const isConfirmModalOpen = ref(false);
+const studentToDelete = ref(null);
+const isDeleting = ref(false);
+
+function openDeleteModal(student) {
+  studentToDelete.value = student;
+  isConfirmModalOpen.value = true;
+}
+
+function closeDeleteModal() {
+  if (isDeleting.value) return;
+  isConfirmModalOpen.value = false;
+  studentToDelete.value = null;
+}
+
+async function confirmDelete() {
+  if (!studentToDelete.value) return;
+  isDeleting.value = true;
   try {
-    await studentStore.deleteStudent(studentToDelete.value.isuId)
-    isConfirmModalOpen.value = false
-  } catch (error) {
-    console.error(error)
+    await studentStore.deleteStudent(studentToDelete.value.isuId);
+    isConfirmModalOpen.value = false;
+    studentToDelete.value = null;
+    await refresh();
+  } catch (err) {
+    studentStore.notify(getErrorMessage(err, 'Failed to delete student'), 'error');
   } finally {
-    isDeleting.value = false
+    isDeleting.value = false;
   }
 }
 </script>

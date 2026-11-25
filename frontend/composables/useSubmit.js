@@ -1,22 +1,22 @@
-// frontend/composables/useSubmit.js
-import { ref } from 'vue'
+import { ref } from 'vue';
 
-export function useSubmit(submitCallback) {
-  const isSubmitting = ref(false)
-  const error = ref(null)
+export function useSubmit(fn) {
+  const isSubmitting = ref(false);
 
-  const submit = async (...args) => {
-    isSubmitting.value = true
-    error.value = null
+  async function submit(...args) {
+    if (isSubmitting.value) return;
+    isSubmitting.value = true;
     try {
-      await submitCallback(...args)
-    } catch (err) {
-      error.value = err
-      throw err
+      return await fn(...args);
     } finally {
-      isSubmitting.value = false
+      isSubmitting.value = false;
     }
   }
 
-  return { isSubmitting, error, submit }
+  return {
+    isSubmitting,
+    submit
+  };
 }
+
+export default useSubmit;
