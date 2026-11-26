@@ -27,3 +27,11 @@ dist/
 Thumbs.db
 
 *.pdf
+
+# nuxt
+.nuxt/
+.output/
+.nitro/
+.cache/
+.data/
+
