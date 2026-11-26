@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: itmo_lab4_db
+    container_name: itmo_lab5_db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-students}
       POSTGRES_USER: ${POSTGRES_USER:-students_user}
@@ -15,12 +15,12 @@ services:
       retries: 10
     restart: unless-stopped
     networks:
-      - lab4_net
+      - lab5_net
 
   backend:
     build:
       context: ./backend
-    container_name: itmo_lab4_backend
+    container_name: itmo_lab5_backend
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-students}
       DB_USERNAME: ${POSTGRES_USER:-students_user}
@@ -28,28 +28,34 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set. Copy .env.example to .env}
       JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS:-900000}
       JWT_REFRESH_EXPIRATION_MS: ${JWT_REFRESH_EXPIRATION_MS:-604800000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8081}
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - lab4_net
+      - lab5_net
 
   frontend:
     build:
       context: ./frontend
-    container_name: itmo_lab4_frontend
+    container_name: itmo_lab5_frontend
     ports:
-      - "${FRONTEND_PORT:-8081}:80"
+      - "${FRONTEND_PORT:-8081}:3000"
+    environment:
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: 3000
+      NUXT_API_INTERNAL_BASE: http://backend:8080/api
+      NUXT_PUBLIC_API_BASE: /api
     depends_on:
       - backend
     restart: unless-stopped
     networks:
-      - lab4_net
+      - lab5_net
 
 volumes:
   pgdata:
 
 networks:
-  lab4_net:
+  lab5_net:
     driver: bridge
