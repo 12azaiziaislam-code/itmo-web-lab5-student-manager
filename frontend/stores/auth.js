@@ -1,89 +1,156 @@
 import { defineStore } from 'pinia';
-import axios from 'axios';
-import api from '../services/api';
+import { ref, computed } from 'vue';
 
-function setCookie(name, value) {
-  document.cookie = name + '=' + value + '; path=/; max-age=604800';
-}
+export const useAuthStore = defineStore('auth', () => {
+  const cookieOptions = {
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7
+  };
 
-function getCookie(name) {
-  const cookies = document.cookie.split('; ');
-  for (const cookie of cookies) {
-    const [key, value] = cookie.split('=');
-    if (key === name) return value;
+  const accessToken = useCookie('accessToken', cookieOptions);
+  const refreshToken = useCookie('refreshToken', cookieOptions);
+  const username = useCookie('username', cookieOptions);
+  const role = useCookie('role', cookieOptions);
+
+  const user = ref(null);
+
+  let refreshPromise = null;
+
+  const isAuthenticated = computed(() => Boolean(accessToken.value || refreshToken.value));
+  const isAdmin = computed(() => role.value === 'ADMIN');
+
+  function getBaseUrl() {
+    const config = useRuntimeConfig();
+    if (import.meta.server) {
+      return config.apiInternalBase || 'http://localhost:8080/api';
+    }
+    return config.public?.apiBase || '/api';
   }
-  return null;
-}
 
-function removeCookie(name) {
-  document.cookie = name + '=; path=/; max-age=0';
-}
+  function setSession(data) {
+    accessToken.value = data.accessToken;
+    refreshToken.value = data.refreshToken;
+    username.value = data.username;
+    role.value = data.role;
+  }
 
-export const useAuthStore = defineStore('auth', {
-  state: () => ({
-    accessToken: getCookie('accessToken'),
-    refreshToken: getCookie('refreshToken'),
-    username: getCookie('username'),
-    role: getCookie('role'),
-    profile: null
-  }),
+  function clearSession() {
+    accessToken.value = null;
+    refreshToken.value = null;
+    username.value = null;
+    role.value = null;
+    user.value = null;
+  }
 
-  getters: {
-    isAuthenticated: (state) => !!state.accessToken,
-    isAdmin: (state) => state.role === 'ADMIN'
-  },
+  async function login(credentials) {
+    const data = await $fetch(`${getBaseUrl()}/auth/login`, {
+      method: 'POST',
+      body: credentials
+    });
+    setSession(data);
+    return data;
+  }
 
-  actions: {
-    async login(credentials) {
-      const { data } = await api.post('/auth/login', credentials);
-      this.setSession(data);
-    },
+  async function register(payload) {
+    const data = await $fetch(`${getBaseUrl()}/auth/register`, {
+      method: 'POST',
+      body: payload
+    });
+    setSession(data);
+    return data;
+  }
 
-    async register(userData) {
-      const { data } = await api.post('/auth/register', userData);
-      this.setSession(data);
-    },
+  async function refresh() {
+    if (!refreshToken.value) {
+      clearSession();
+      throw new Error('No refresh token available');
+    }
 
-    async refresh() {
-      const { data } = await axios.post('/api/auth/refresh', {
-        refreshToken: this.refreshToken
+    if (refreshPromise) {
+      return refreshPromise;
+    }
+
+    refreshPromise = $fetch(`${getBaseUrl()}/auth/refresh`, {
+      method: 'POST',
+      body: { refreshToken: refreshToken.value }
+    })
+      .then((data) => {
+        setSession(data);
+        return data;
+      })
+      .catch((err) => {
+        clearSession();
+        throw err;
+      })
+      .finally(() => {
+        refreshPromise = null;
       });
-      this.setSession(data);
-    },
 
-    async fetchProfile(signal) {
-      const { data } = await api.get('/users/me', { signal });
-      this.profile = data;
-      this.role = data.role;
-      setCookie('role', data.role);
-    },
+    return refreshPromise;
+  }
 
-    setSession(data) {
-      this.accessToken = data.accessToken;
-      this.refreshToken = data.refreshToken;
-      this.username = data.username;
-      this.role = data.role;
+  async function fetchMe() {
+    if (!accessToken.value) {
+      if (!refreshToken.value) return null;
+      await refresh();
+    }
 
-      setCookie('accessToken', data.accessToken);
-      setCookie('refreshToken', data.refreshToken);
-      setCookie('username', data.username);
-      setCookie('role', data.role);
-    },
-
-    logout() {
-      if (this.refreshToken) {
-        axios.post('/api/auth/logout', { refreshToken: this.refreshToken }).catch(() => {});
+    try {
+      const profile = await $fetch(`${getBaseUrl()}/users/me`, {
+        headers: { Authorization: `Bearer ${accessToken.value}` }
+      });
+      user.value = profile;
+      username.value = profile.username;
+      role.value = profile.role;
+      return profile;
+    } catch (err) {
+      const status = err?.statusCode || err?.status || err?.response?.status;
+      if (status === 401 && refreshToken.value) {
+        await refresh();
+        const profile = await $fetch(`${getBaseUrl()}/users/me`, {
+          headers: { Authorization: `Bearer ${accessToken.value}` }
+        });
+        user.value = profile;
+        username.value = profile.username;
+        role.value = profile.role;
+        return profile;
       }
-      this.accessToken = null;
-      this.refreshToken = null;
-      this.username = null;
-      this.role = null;
-      this.profile = null;
-
-      removeCookie('accessToken');
-      removeCookie('refreshToken');
-      removeCookie('username');
-      removeCookie('role');
+      throw err;
     }
   }
+
+  async function logout() {
+    const currentRefresh = refreshToken.value;
+    try {
+      if (currentRefresh) {
+        await $fetch(`${getBaseUrl()}/auth/logout`, {
+          method: 'POST',
+          body: { refreshToken: currentRefresh }
+        });
+      }
+    } catch {
+    } finally {
+      clearSession();
+    }
+  }
+
+  return {
+    accessToken,
+    refreshToken,
+    username,
+    role,
+    user,
+    isAuthenticated,
+    isAdmin,
+    setSession,
+    clearSession,
+    login,
+    register,
+    refresh,
+    fetchMe,
+    logout
+  };
 });
+
+export default useAuthStore;

@@ -3,15 +3,20 @@
     <header class="app-header">
       <div>
         <h1>Student Management System</h1>
-        <div v-if="username" class="user-badge">
-          Signed in as <strong>{{ username }}</strong> ({{ role || 'USER' }})
+        <div v-if="authStore.username" class="user-badge">
+          Signed in as <strong>{{ authStore.username }}</strong> ({{ authStore.role || 'USER' }})
         </div>
         <nav class="nav-links">
           <NuxtLink to="/">Students</NuxtLink>
           <NuxtLink to="/profile">Profile</NuxtLink>
         </nav>
       </div>
-      <button v-if="isAuthenticated" type="button" class="btn btn-danger btn-sm" @click="handleLogout">
+      <button
+        v-if="authStore.isAuthenticated"
+        type="button"
+        class="btn btn-danger btn-sm"
+        @click="handleLogout"
+      >
         Logout
       </button>
     </header>
@@ -23,20 +28,13 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { useAuthStore } from '~/stores/auth';
 
-const accessToken = useCookie('accessToken');
-const refreshToken = useCookie('refreshToken');
-const username = useCookie('username');
-const role = useCookie('role');
-
-const isAuthenticated = computed(() => Boolean(accessToken.value));
+const authStore = useAuthStore();
 
 async function handleLogout() {
-  accessToken.value = null;
-  refreshToken.value = null;
-  username.value = null;
-  role.value = null;
+  await authStore.logout();
+  clearNuxtData();
   await navigateTo('/login');
 }
 </script>
