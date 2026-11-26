@@ -1,16 +1,18 @@
 <template>
-  <Teleport to="body">
-    <div
-      v-if="isOpen"
-      class="modal-backdrop"
-      @mousedown.self="pressedOnBackdrop = true"
-      @click.self="onBackdropClick"
-    >
-      <div class="modal" role="dialog" aria-modal="true" @mousedown="pressedOnBackdrop = false">
-        <slot />
+  <ClientOnly>
+    <Teleport to="body">
+      <div
+        v-if="isOpen"
+        class="modal-backdrop"
+        @mousedown.self="pressedOnBackdrop = true"
+        @click.self="onBackdropClick"
+      >
+        <div class="modal" role="dialog" aria-modal="true" @mousedown="pressedOnBackdrop = false">
+          <slot />
+        </div>
       </div>
-    </div>
-  </Teleport>
+    </Teleport>
+  </ClientOnly>
 </template>
 
 <script setup>
@@ -42,6 +44,7 @@ function onKeydown(event) {
 watch(
   () => props.isOpen,
   (open) => {
+    if (!import.meta.client) return;
     if (open) {
       document.addEventListener('keydown', onKeydown);
     } else {
@@ -51,5 +54,9 @@ watch(
   { immediate: true }
 );
 
-onUnmounted(() => document.removeEventListener('keydown', onKeydown));
+onUnmounted(() => {
+  if (import.meta.client) {
+    document.removeEventListener('keydown', onKeydown);
+  }
+});
 </script>
