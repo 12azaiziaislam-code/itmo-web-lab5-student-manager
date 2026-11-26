@@ -90,6 +90,10 @@
 </template>
 
 <script setup>
+definePageMeta({
+  middleware: 'auth'
+});
+
 import { ref, computed } from 'vue';
 import { useStudentStore } from '~/stores/students';
 import { getErrorMessage } from '~/utils/errors';
