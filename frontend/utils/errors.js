@@ -1,23 +1,24 @@
-import axios from 'axios';
-
 export function getErrorMessage(err, defaultText = 'Something went wrong') {
-  if (axios.isCancel(err)) return '';
+  if (!err) return defaultText;
 
-  if (!err.response) {
-    return 'Cannot connect to server. Ensure backend is running.';
+  const data = err.data || err.response?._data || err.response?.data;
+  const status = err.statusCode || err.status || err.response?.status || data?.status;
+
+  if (data) {
+    if (typeof data === 'string' && data.trim()) return data;
+    if (data.message) return data.message;
+    if (data.error) return data.error;
   }
 
-  const status = err.response.status;
-  const data = err.response.data || {};
-  const text = data.message || data.error;
+  if (status === 401) return 'Unauthorized. Please log in again.';
+  if (status === 403) return 'ADMIN role is required for this action.';
+  if (status === 404) return 'Requested resource was not found.';
+  if (status === 409) return 'Record with the same data already exists.';
+  if (status === 422) return 'Validation error. Please check your input.';
+  if (status >= 500) return 'Internal server error. Please try again later.';
 
-  if (status === 401) return text || 'Session expired. Please sign in again.';
-  if (status === 403) return 'Access denied. ADMIN role is required.';
-  if (status === 404) return text || 'Not found';
-  if (status === 422) return 'Validation error: ' + (text || 'check the form');
-  if (status === 502 || status === 503 || status === 504 || (status >= 500 && !text)) {
-    return 'Server is unavailable. Try again later.';
-  }
-  if (status >= 500) return 'Internal server error. Try again later.';
-  return text || defaultText;
+  if (err.message) return err.message;
+  return defaultText;
 }
+
+export default getErrorMessage;

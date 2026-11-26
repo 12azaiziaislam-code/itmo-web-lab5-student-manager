@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia';
-import studentService from '../services/studentService';
 
 export function defaultFilters() {
   return {
@@ -21,6 +20,26 @@ export function defaultFilters() {
 }
 
 let notificationTimer = null;
+
+function resolveApiBase() {
+  const config = useRuntimeConfig();
+  if (import.meta.server && config.apiInternalBase) {
+    return config.apiInternalBase;
+  }
+  if (config.public?.apiBase) {
+    return config.public.apiBase;
+  }
+  return '/api';
+}
+
+function getAuthHeaders() {
+  const token = useCookie('accessToken').value;
+  const headers = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 export const useStudentStore = defineStore('students', {
   state: () => ({
@@ -56,20 +75,40 @@ export const useStudentStore = defineStore('students', {
     },
 
     async createStudent(payload) {
-      const created = await studentService.createStudent(payload);
+      const baseUrl = resolveApiBase();
+      const created = await $fetch(`${baseUrl}/students`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: payload
+      });
       this.notify(`Student ${created.fullName} (${created.isuId}) was added`);
+      clearNuxtData();
+      await refreshNuxtData();
       return created;
     },
 
     async updateStudent(isuId, payload) {
-      const updated = await studentService.updateStudent(isuId, payload);
+      const baseUrl = resolveApiBase();
+      const updated = await $fetch(`${baseUrl}/students/${isuId}`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: payload
+      });
       this.notify(`Student ${updated.fullName} (${isuId}) was updated`);
+      clearNuxtData();
+      await refreshNuxtData();
       return updated;
     },
 
     async deleteStudent(isuId) {
-      await studentService.deleteStudent(isuId);
+      const baseUrl = resolveApiBase();
+      await $fetch(`${baseUrl}/students/${isuId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
       this.notify(`Student ${isuId} was deleted`);
+      clearNuxtData();
+      await refreshNuxtData();
     }
   }
 });
